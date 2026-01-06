@@ -670,7 +670,7 @@ function buildMaskForBBox(grid, bbox, boundaryGeoJSON){
 /* Colors */
 const PM_BLUE="#22c55e";
 const PM_YELLOW="#facc15";
-const PM_RAMP_BREAKS=[10,20,30,40,60,120];
+const PM_RAMP_BREAKS=[5,15,30,40,60,120];
 const PM_RAMP_COLORS=["#86efac","#fef08a","#fdba74","#fb7185","#c084fc","#7c3aed"];
 function hexToRgb(hex){ const h=hex.replace("#","").trim(); const n=parseInt(h,16); return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 }; }
 function rampColor(x, breaks, colors){
