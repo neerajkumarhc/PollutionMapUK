@@ -693,7 +693,7 @@ function rampColor(x, breaks, colors){
 function pmToColor(pm){
   if (!isFinite(pm)) return "rgba(0,0,0,0)";
   if (pm<5) return PM_BLUE;
-  if (pm<10) return PM_YELLOW;
+  if (pm<15) return PM_YELLOW;
   return rampColor(pm, PM_RAMP_BREAKS, PM_RAMP_COLORS);
 }
 function parseCssRgb(str){
