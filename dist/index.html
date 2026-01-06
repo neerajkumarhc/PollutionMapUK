@@ -1,0 +1,2092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="x-poe-datastore-behavior" content="local_only">
+  <meta http-equiv="Content-Security-Policy" content="
+  default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:
+    https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com
+    https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com
+    https://maps.googleapis.com https://ajax.googleapis.com
+    https://kit.fontawesome.com https://cdn.datatables.net https://maxcdn.bootstrapcdn.com
+    https://code.highcharts.com https://tako-static-assets-production.s3.amazonaws.com
+    https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com
+    https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org
+    https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com
+    https://tile.openstreetmap.org https://nominatim.openstreetmap.org;
+  connect-src 'self' blob: data:
+    https://raw.githubusercontent.com
+    https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://code.jquery.com https://unpkg.com
+    https://d3js.org https://threejs.org https://cdn.plot.ly https://stackpath.bootstrapcdn.com
+    https://maps.googleapis.com https://ajax.googleapis.com https://kit.fontawesome.com
+    https://cdn.datatables.net https://maxcdn.bootstrapcdn.com https://code.highcharts.com
+    https://tako-static-assets-production.s3.amazonaws.com
+    https://www.youtube.com https://fonts.googleapis.com https://fonts.gstatic.com
+    https://pfst.cf2.poecdn.net https://puc.poecdn.net https://i.imgur.com https://wikimedia.org
+    https://*.icons8.com https://*.giphy.com https://picsum.photos https://images.unsplash.com
+    https://tile.openstreetmap.org https://nominatim.openstreetmap.org;
+  img-src 'self' data: blob: https://tile.openstreetmap.org;
+  frame-src 'self' https://www.youtube.com https://trytako.com;
+  worker-src 'self';
+  upgrade-insecure-requests;
+  block-all-mixed-content;
+">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>UK PM2.5 Heat Map</title>
+
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:rgba(255,255,255,0.06);
+      --text:rgba(255,255,255,0.92);
+      --muted:rgba(255,255,255,0.7);
+      --muted2:rgba(255,255,255,0.55);
+      --border:rgba(255,255,255,0.12);
+      --mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+      --sans:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background: radial-gradient(1200px 600px at 20% 0%, rgba(125,211,252,0.18), transparent 60%),
+                  radial-gradient(900px 600px at 90% 10%, rgba(52,211,153,0.12), transparent 60%),
+                  var(--bg);
+      color:var(--text);
+      font-family:var(--sans);
+    }
+    header{padding:12px 14px 10px 14px;border-bottom:1px solid var(--border);}
+    header h1{margin:0 0 6px 0;font-size:16px;font-weight:750;letter-spacing:0.2px;}
+    header p{margin:0;color:var(--muted);font-size:12px;line-height:1.35;max-width:1100px;}
+    .badge{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 7px;border:1px solid var(--border);border-radius:999px;color:var(--muted);background:rgba(0,0,0,0.18);vertical-align:middle;margin-left:8px;}
+    .layout{display:grid;grid-template-columns:1fr;gap:12px;padding:12px;max-width:1100px;margin:0 auto;}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+    .map-card{border:1px solid var(--border);border-radius:14px;overflow:hidden;background:rgba(0,0,0,0.18);}
+    .map-hd{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+    .map-hd .left{display:grid;gap:4px;min-width:220px;}
+    .map-hd .title{font-size:13px;font-weight:850;}
+    .map-hd .meta{font-size:11px;color:var(--muted);font-family:var(--mono);}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end;}
+    select,button,input[type="range"]{font-family:var(--sans)}
+    select,button{background:rgba(0,0,0,0.20);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:7px 9px;font-size:12px;}
+    button{cursor:pointer}
+    button:hover{border-color:rgba(255,255,255,0.22)}
+    button:disabled{opacity:0.45;cursor:not-allowed}
+    .btn-muted{color:var(--muted)}
+    .btn-play{border-color:rgba(125,211,252,0.35)}
+    .btn-play:hover{border-color:rgba(125,211,252,0.65)}
+    .btn-seg{padding:6px 8px;border-radius:10px;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.88);border:1px solid rgba(255,255,255,0.14);background:rgba(0,0,0,0.16);}
+    .btn-seg.active{border-color:rgba(125,211,252,0.65);box-shadow:inset 0 0 0 1px rgba(125,211,252,0.18);color:rgba(255,255,255,0.95);}
+    .seg-group{display:inline-flex;gap:6px;align-items:center;padding:6px;border-radius:12px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.12);}
+    .seg-label{font-size:11px;color:var(--muted2);font-family:var(--mono);padding:0 4px 0 2px;user-select:none;}
+    .timeline{width:100%;border:1px solid rgba(255,255,255,0.10);background:rgba(0,0,0,0.12);border-radius:12px;padding:10px;display:grid;gap:8px;}
+    .timeline .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;}
+    .timeline .title{font-size:11px;font-weight:850;color:rgba(255,255,255,0.92);}
+    .timeline .value{font-size:11px;font-family:var(--mono);color:rgba(255,255,255,0.88);}
+    .map-wrap{position:relative}
+    .canvas-wrap{position:relative;width:100%;aspect-ratio:0.75 / 1;height:auto;margin:0 auto;}
+    .canvas-wrap.deep{aspect-ratio: 1.3 / 1;min-height:360px;}
+    canvas{width:100%;height:100%;display:block}
+
+    /* Deep basemap layer (OSM tiles) */
+    .deep-stack{
+      position:relative;
+      width:100%;
+      height:100%;
+    }
+    .tile-layer{
+      position:absolute;
+      inset:0;
+      overflow:hidden;
+      background:#0b1220;
+      filter: saturate(0.95) contrast(1.05) brightness(0.85);
+    }
+    .tile-layer img{
+      position:absolute;
+      image-rendering: auto;
+      transform: translateZ(0);
+      opacity:0.95;
+    }
+    .heat-layer{
+      position:absolute;
+      inset:0;
+    }
+
+    .legend{
+      position:absolute;
+      right:10px;
+      bottom:100px;
+      background:rgba(0,0,0,0.40);
+      border:1px solid rgba(255,255,255,0.14);
+      border-radius:12px;
+      padding:10px;
+      width:240px;
+      backdrop-filter:blur(6px);
+      transform:scale(0.60);
+      transform-origin:bottom right;
+    }
+    .legend.deep{bottom:12px;right:12px;transform:scale(0.70);transform-origin:bottom right;}
+    .legend .lg-title{font-size:11px;font-weight:900;color:rgba(255,255,255,0.9);margin-bottom:8px;}
+    .legend .bar{height:10px;border-radius:999px;overflow:hidden;border:1px solid rgba(255,255,255,0.16);background:#111827;display:flex;}
+    .legend .bar>div{flex:1}
+    .legend .ticks{display:flex;justify-content:space-between;gap:10px;font-family:var(--mono);font-size:10px;color:var(--muted2);margin-top:6px;}
+
+    .tooltip{
+      position:absolute;
+      pointer-events:none;
+      transform:translate(10px,10px);
+      padding:8px 9px;
+      border-radius:12px;
+      background:rgba(0,0,0,0.60);
+      border:1px solid rgba(255,255,255,0.16);
+      font-family:var(--mono);
+      font-size:11px;
+      color:rgba(255,255,255,0.92);
+      min-width:230px;
+      display:none;
+      white-space:nowrap;
+      backdrop-filter:blur(6px);
+      z-index:6;
+    }
+    .tooltip .muted{color:var(--muted2)}
+
+    .city-section{ padding:12px; }
+    .city-section .hd{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;margin-bottom:10px;}
+    .city-section .hd .t{font-size:12px;font-weight:900;color:rgba(255,255,255,0.92);}
+    .city-section .hd .d{font-family:var(--mono);font-size:10px;color:var(--muted2);}
+    .city-grid{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:10px;}
+    @media (min-width:720px){ .city-grid{grid-template-columns:repeat(4, minmax(0, 1fr));} }
+    .city-card{border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.12);border-radius:14px;padding:12px;display:grid;gap:6px;cursor:pointer;user-select:none;transition: border-color .15s ease, transform .15s ease, background .15s ease;}
+    .city-card:hover{border-color:rgba(125,211,252,0.35);transform: translateY(-1px);background:rgba(0,0,0,0.16);}
+    .city-card.active{border-color:rgba(125,211,252,0.65);box-shadow:inset 0 0 0 1px rgba(125,211,252,0.16);}
+    .city-card .name{font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.85);font-weight:850;}
+    .city-card .val{font-size:14px;font-weight:900;}
+    .city-card .val small{font-size:10px;color:var(--muted2);font-weight:850;font-family:var(--mono);}
+
+    .deep-hd{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+    .deep-hd .sub{font-family:var(--mono);font-size:10px;color:var(--muted2);}
+    .pill{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.12);font-size:12px;color:rgba(255,255,255,0.88);}
+    .pill b{font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.95)}
+    .pill small{font-family:var(--mono);font-size:10px;color:var(--muted2)}
+    .deep-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end;}
+
+    footer{border-top:1px solid var(--border);margin-top:10px;padding:12px;color:var(--muted2);font-size:12px;line-height:1.45;}
+    .footer-inner{max-width:1100px;margin:0 auto;display:grid;gap:10px;}
+    .foot-note{border-left:3px solid rgba(251,191,36,0.7);padding-left:10px;}
+    .copyright{font-family:var(--mono);color:var(--muted2);font-size:11px;}
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>
+      UK PM2.5 Heat Map
+      <span class="badge" id="modelBadge">Loading…</span>
+    </h1>
+    <p>
+      Now includes <strong>map-style place labels</strong> on both the UK overview and city deep-dive maps (main/sub/sub-sub sizing),
+      plus station tooltips with <strong>locationName</strong> and <strong>locality</strong>.
+    </p>
+  </header>
+
+  <div class="layout">
+    <!-- OVERVIEW MAP -->
+    <div class="panel map-wrap">
+      <div class="map-card">
+        <div class="map-hd">
+          <div class="left">
+            <div class="title">PM2.5 mass concentration (µg/m³) — UK overview</div>
+            <div class="meta" id="metaLine">Loading boundary…</div>
+          </div>
+
+          <div class="toolbar">
+            <button id="playDayBtn" class="btn-play" disabled>Play days</button>
+            <button id="playBtn" class="btn-play">Play</button>
+
+            <span class="seg-group">
+              <span class="seg-label">speed</span>
+              <button class="btn-seg active" id="speed1Btn" data-speed="1">1×</button>
+              <button class="btn-seg" id="speed2Btn" data-speed="2">2×</button>
+              <button class="btn-seg" id="speed8Btn" data-speed="8">8×</button>
+              <button class="btn-seg" id="speed16Btn" data-speed="16">16×</button>
+            </span>
+
+            <button id="toggleBordersBtn" class="btn-muted">Borders: on</button>
+
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);">
+              Month
+              <select id="monthSelect"></select>
+            </label>
+
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);">
+              Map size
+              <select id="mapSizeSelect">
+                <option value="10">10%</option>
+                <option value="25">25%</option>
+                <option value="50">50%</option>
+                <option value="75">75%</option>
+                <option value="100" selected>100%</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="timeline" style="flex:1 1 100%;">
+            <div class="top">
+              <div class="title">Date</div>
+              <div class="value" id="dateLabel">—</div>
+            </div>
+            <input id="dateSlider" type="range" min="0" max="0" step="1" value="0" disabled>
+          </div>
+        </div>
+
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="mapCanvas"></canvas>
+
+          <div class="legend" id="legend">
+            <div class="lg-title">Legend (µg/m³)</div>
+            <div class="bar" id="legendBar"></div>
+            <div class="ticks" id="legendTicks"></div>
+          </div>
+
+          <div class="tooltip" id="tooltip"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HERO CARDS -->
+    <div class="panel">
+      <div class="city-section">
+        <div class="hd">
+          <div class="t">Hotspot region averages (click a card to open deep-dive map)</div>
+          <div class="d" id="citySectionDate">—</div>
+        </div>
+
+        <div class="city-grid" id="cityGrid">
+          <div class="city-card active" data-city="London">
+            <div class="name">London</div><div class="val" id="meanLondon">—</div>
+          </div>
+          <div class="city-card" data-city="WestMidlands">
+            <div class="name">West Midlands</div><div class="val" id="meanWestMidlands">—</div>
+          </div>
+          <div class="city-card" data-city="Manchester">
+            <div class="name">Manchester</div><div class="val" id="meanManchester">—</div>
+          </div>
+          <div class="city-card" data-city="WestYorkshire">
+            <div class="name">Leeds–Bradford</div><div class="val" id="meanWestYorkshire">—</div>
+          </div>
+          <div class="city-card" data-city="Merseyside">
+            <div class="name">Liverpool</div><div class="val" id="meanMerseyside">—</div>
+          </div>
+          <div class="city-card" data-city="BristolBath">
+            <div class="name">Bristol–Bath</div><div class="val" id="meanBristolBath">—</div>
+          </div>
+          <div class="city-card" data-city="SouthCoast">
+            <div class="name">Southampton–Portsmouth</div><div class="val" id="meanSouthCoast">—</div>
+          </div>
+          <div class="city-card" data-city="Glasgow">
+            <div class="name">Glasgow</div><div class="val" id="meanGlasgow">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CITY DEEP-DIVE MAP -->
+    <div class="panel map-wrap">
+      <div class="map-card">
+        <div class="map-hd">
+          <div class="left">
+            <div class="deep-hd">
+              <div class="title" id="deepTitle">City deep-dive — London</div>
+              <div class="sub" id="deepMeta">Loading…</div>
+            </div>
+          </div>
+
+          <div class="deep-actions">
+            <span class="pill" title="Deep-dive grid resolution">
+              <small>grid</small> <b id="deepGridLabel">180×180</b>
+            </span>
+            <button id="deepToggleBasemapBtn" class="btn-muted">Basemap: on</button>
+            <button id="deepToggleStationsBtn" class="btn-muted">Stations: on</button>
+            <button id="deepToggleLabelsBtn" class="btn-muted">Labels: on</button>
+            <button id="deepFitBtn" class="btn-muted">Fit</button>
+          </div>
+
+          <div class="timeline" style="flex:1 1 100%;">
+            <div class="top">
+              <div class="title">Date (shared with overview)</div>
+              <div class="value" id="deepDateLabel">—</div>
+            </div>
+            <input id="deepDateSlider" type="range" min="0" max="0" step="1" value="0" disabled>
+          </div>
+        </div>
+
+        <div class="canvas-wrap deep" id="deepCanvasWrap">
+          <div class="deep-stack">
+            <div class="tile-layer" id="tileLayer" aria-hidden="true"></div>
+            <canvas class="heat-layer" id="deepCanvas"></canvas>
+          </div>
+
+          <div class="legend deep" id="deepLegend">
+            <div class="lg-title">Legend (µg/m³)</div>
+            <div class="bar" id="deepLegendBar"></div>
+            <div class="ticks" id="deepLegendTicks"></div>
+          </div>
+
+          <div class="tooltip" id="deepTooltip"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="foot-note">
+        <strong>Roads/blocks:</strong> rendered via <strong>OpenStreetMap tiles</strong> behind the deep-dive heatmap.
+      </div>
+      <div class="foot-note">
+        <strong>Labels:</strong> generated from station metadata by clustering localities (main/sub/sub-sub feel).
+      </div>
+      <div class="copyright">
+        © <span id="copyrightYear"></span> HiboCare International Limited. All rights reserved.
+      </div>
+    </div>
+  </footer>
+
+<script>
+document.getElementById("copyrightYear").textContent = String(new Date().getFullYear());
+
+/* ---------------- Config ---------------- */
+const PM25_DATA_URL = (window.PM25_DATA_URL || "./pm25_UK_2025_joined.json");
+const UK_TOPOJSON_URL = "https://raw.githubusercontent.com/ONSdigital/uk-topojson/refs/heads/main/output/topo.json";
+const ONS_LAD_GEOJSON_URL = "https://raw.githubusercontent.com/deldersveld/topojson/master/countries/united-kingdom/local-authority-districts.json";
+const ONS_METCOUNTY_TOPOJSON_URL = "https://raw.githubusercontent.com/deldersveld/topojson/master/countries/united-kingdom/metropolitan-counties.json";
+
+const IDW = { k: 10, radiusKm: 180, power: 2, minNeighbors: 3, eps: 1e-6, clampMin: 0, clampMax: 200 };
+const GRID_OVERVIEW = { nx: 80, ny: 80 };
+const GRID_DEEP = { nx: 180, ny: 180 };
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const UK_BBOX = { lonMin: -8.8, lonMax: 2.2, latMin: 49.8, latMax: 60.9 };
+
+// Deep basemap tiles (OSM)
+const OSM_TILE_TEMPLATE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const OSM_MAX_Z = 19;
+const OSM_MIN_Z = 0;
+const DEFAULT_CITY_Z = 12;
+
+// Reverse geocoding (Nominatim)
+const NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat={lat}&lon={lon}";
+const GEO = { enabled:true, minIntervalMs:1100, lastRequestAt:0, inFlight:null, cache:new Map(), round:4 };
+
+/* Label generation */
+const LABELS = {
+  enabled: true,
+  minDistancePx: 46,
+  maxMain: 8,
+  maxSub: 14,
+  maxMinor: 18,
+};
+/* Make fonts in zonal maps (overview + deep) a bit less thick than before */
+const LABEL_STYLE = {
+  mainWeight: 650,
+  subWeight: 550,
+  minorWeight: 500,
+  mainHaloWidth: 3,
+  subHaloWidth: 5,
+  minorHaloWidth: 4,
+};
+
+/* ---------------- City defs ---------------- */
+const CITY_DEFS = [
+  {
+    id:"London", label:"London",
+    bbox:{ lonMin:-0.60, lonMax:0.45, latMin:51.20, latMax:51.75 },
+    z: 12,
+    ladNameContainsAny:[
+      "Barnet","Bexley","Brent","Bromley","Camden","Croydon","Ealing","Enfield","Greenwich",
+      "Hackney","Hammersmith and Fulham","Haringey","Harrow","Havering","Hillingdon","Hounslow",
+      "Islington","Kensington and Chelsea","Kingston upon Thames","Lambeth","Lewisham","Merton",
+      "Newham","Redbridge","Richmond upon Thames","Southwark","Sutton","Tower Hamlets",
+      "Waltham Forest","Wandsworth","Westminster","City of London"
+    ]
+  },
+  { id:"WestMidlands", label:"West Midlands", bbox:{ lonMin:-2.60, lonMax:-1.35, latMin:52.25, latMax:52.75 }, z: 11, metCountyName:"West Midlands" },
+  { id:"Manchester", label:"Greater Manchester", bbox:{ lonMin:-2.70, lonMax:-1.95, latMin:53.30, latMax:53.70 }, z: 11, metCountyName:"Greater Manchester" },
+  { id:"WestYorkshire", label:"Leeds–Bradford (West Yorkshire)", bbox:{ lonMin:-2.10, lonMax:-1.10, latMin:53.60, latMax:54.15 }, z: 11, metCountyName:"West Yorkshire" },
+  { id:"Merseyside", label:"Liverpool (Merseyside)", bbox:{ lonMin:-3.35, lonMax:-2.55, latMin:53.25, latMax:53.60 }, z: 11, metCountyName:"Merseyside" },
+  { id:"BristolBath", label:"Bristol–Bath", bbox:{ lonMin:-3.10, lonMax:-2.05, latMin:51.20, latMax:51.65 }, z: 11, ladNameContainsAny:["Bristol, City of","Bath and North East Somerset","South Gloucestershire","North Somerset"] },
+  { id:"SouthCoast", label:"Southampton–Portsmouth", bbox:{ lonMin:-1.90, lonMax:-0.65, latMin:50.70, latMax:51.10 }, z: 11, ladNameContainsAny:["Southampton","Portsmouth","Fareham","Gosport","Havant","Eastleigh"] },
+  { id:"Glasgow", label:"Glasgow", bbox:{ lonMin:-4.75, lonMax:-4.05, latMin:55.75, latMax:56.05 }, z: 12, ladNameContainsAny:["Glasgow City"] }
+];
+const CITY_BY_ID = new Map(CITY_DEFS.map(c => [c.id, c]));
+
+/* A small, curated set of UK overview labels (kept always, independent of station metadata). */
+const UK_OVERVIEW_LABELS = [
+  { name:"London", lon:-0.1276, lat:51.5072, tier:"main" },
+  { name:"Birmingham", lon:-1.8904, lat:52.4862, tier:"main" },
+  { name:"Manchester", lon:-2.2426, lat:53.4808, tier:"main" },
+  { name:"Leeds", lon:-1.5491, lat:53.8008, tier:"sub" },
+  { name:"Liverpool", lon:-2.9916, lat:53.4084, tier:"sub" },
+  { name:"Bristol", lon:-2.5879, lat:51.4545, tier:"sub" },
+  { name:"Newcastle", lon:-1.6178, lat:54.9783, tier:"sub" },
+  { name:"Sheffield", lon:-1.4701, lat:53.3811, tier:"sub" },
+  { name:"Nottingham", lon:-1.1581, lat:52.9548, tier:"minor" },
+  { name:"Cardiff", lon:-3.1791, lat:51.4816, tier:"sub" },
+  { name:"Belfast", lon:-5.9301, lat:54.5973, tier:"sub" },
+  { name:"Edinburgh", lon:-3.1883, lat:55.9533, tier:"sub" },
+  { name:"Glasgow", lon:-4.2518, lat:55.8642, tier:"sub" },
+  { name:"Aberdeen", lon:-2.0943, lat:57.1497, tier:"minor" },
+  { name:"Inverness", lon:-4.2247, lat:57.4778, tier:"minor" },
+];
+
+/* ---------------- Utils ---------------- */
+let SHOW_BORDERS = true;
+let TIME_MODE = "month";
+let IS_SCRUBBING = false;
+
+const ANIM = { playing:false, mode:"month", timer:null, baseIntervalMs:750, speedMult:1 };
+function currentIntervalMs(){ return Math.max(16, Math.floor(ANIM.baseIntervalMs / (ANIM.speedMult || 1))); }
+function clamp(x,a,b){ return Math.max(a, Math.min(b,x)); }
+function safeNum(x){ const n=(typeof x==="string")?parseFloat(x):Number(x); return Number.isFinite(n)?n:NaN; }
+function lerp(a,b,t){ return a+(b-a)*t; }
+
+function monthIndexFromDateLike(x){
+  if (!x) return null;
+  if (typeof x==="string"){
+    const m=x.match(/^\s*(\d{4})[-\/](\d{2})/);
+    if (m){ const mm=parseInt(m[2],10); if (mm>=1 && mm<=12) return mm-1; }
+    const d=new Date(x); if (!isNaN(d.getTime())) return d.getUTCMonth();
+    return null;
+  }
+  const d=(x instanceof Date)?x:new Date(x);
+  if (!isNaN(d.getTime())) return d.getUTCMonth();
+  return null;
+}
+function dateKeyFromDateLike(x){
+  if (!x) return null;
+  if (typeof x==="string"){
+    const m=x.match(/^\s*(\d{4})[-\/](\d{2})[-\/](\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  }
+  const d=(x instanceof Date)?x:new Date(x);
+  if (isNaN(d.getTime())) return null;
+  const yyyy=d.getUTCFullYear();
+  const mm=String(d.getUTCMonth()+1).padStart(2,"0");
+  const dd=String(d.getUTCDate()).padStart(2,"0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+function monthIndexFromDateKey(dateKey){
+  if (!dateKey || typeof dateKey!=="string") return null;
+  const m=dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const mm=parseInt(m[2],10);
+  if (!(mm>=1 && mm<=12)) return null;
+  return mm-1;
+}
+
+function haversineKm(lon1,lat1,lon2,lat2){
+  const toRad=Math.PI/180;
+  const φ1=lat1*toRad, φ2=lat2*toRad;
+  const dφ=(lat2-lat1)*toRad;
+  const dλ=(lon2-lon1)*toRad;
+  const a=Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+  return 6371*(2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+/* Point-in-Polygon */
+function pointInRing(lon,lat,ring){
+  let inside=false;
+  for (let i=0,j=ring.length-1; i<ring.length; j=i++){
+    const xi=ring[i][0], yi=ring[i][1];
+    const xj=ring[j][0], yj=ring[j][1];
+    const intersect=((yi>lat)!==(yj>lat)) && (lon < (xj-xi)*(lat-yi)/((yj-yi)||1e-12)+xi);
+    if (intersect) inside=!inside;
+  }
+  return inside;
+}
+function pointInPolygon(lon,lat,coords){
+  if (!coords || coords.length===0) return false;
+  const outer=coords[0];
+  if (!pointInRing(lon,lat,outer)) return false;
+  for (let i=1;i<coords.length;i++) if (pointInRing(lon,lat,coords[i])) return false;
+  return true;
+}
+function pointInGeometry(lon,lat,geom){
+  if (!geom) return false;
+  const t=geom.type, c=geom.coordinates;
+  if (t==="Polygon") return pointInPolygon(lon,lat,c);
+  if (t==="MultiPolygon"){ for (const poly of c) if (pointInPolygon(lon,lat,poly)) return true; return false; }
+  return false;
+}
+function pointInGeoJSON(lon,lat,gj){
+  if (!gj) return false;
+  if (gj.type==="FeatureCollection"){ for (const f of gj.features||[]) if (pointInGeometry(lon,lat,f.geometry)) return true; return false; }
+  if (gj.type==="Feature") return pointInGeometry(lon,lat,gj.geometry);
+  return pointInGeometry(lon,lat,gj);
+}
+
+/* Minimal TopoJSON -> GeoJSON (Polygon/MultiPolygon) */
+function topoTransformPoint(transform, point){
+  let x = point[0], y = point[1];
+  if (!transform) return [x, y];
+  return [ x * transform.scale[0] + transform.translate[0], y * transform.scale[1] + transform.translate[1] ];
+}
+function topoDecodeArcs(topology){
+  const arcs = topology.arcs || [];
+  const decoded = new Array(arcs.length);
+  for (let i=0;i<arcs.length;i++){
+    const arc = arcs[i];
+    let x=0, y=0;
+    const pts = new Array(arc.length);
+    for (let j=0;j<arc.length;j++){
+      x += arc[j][0]; y += arc[j][1];
+      pts[j] = [x, y];
+    }
+    decoded[i] = pts;
+  }
+  return decoded;
+}
+function topoArcPoints(decodedArcs, arcIndex){
+  const i = arcIndex >= 0 ? arcIndex : ~arcIndex;
+  const pts = decodedArcs[i];
+  if (!pts) return [];
+  if (arcIndex >= 0) return pts;
+  return pts.slice().reverse();
+}
+function topoRingsToCoords(decodedArcs, rings, transform){
+  const out = [];
+  for (const ringArcs of rings){
+    let ring = [];
+    for (let k=0;k<ringArcs.length;k++){
+      const aPts = topoArcPoints(decodedArcs, ringArcs[k]);
+      if (!aPts.length) continue;
+      if (ring.length) ring.pop();
+      ring = ring.concat(aPts);
+    }
+    out.push(ring.map(p => topoTransformPoint(transform, p)));
+  }
+  return out;
+}
+function topoAnyObjectName(topology){
+  const objs = topology?.objects;
+  if (!objs) return null;
+  const keys = Object.keys(objs);
+  return keys.length ? keys[0] : null;
+}
+function topoObjectToGeoJSON(topology, objectName){
+  const obj = topology?.objects?.[objectName];
+  if (!obj) throw new Error(`TopoJSON object "${objectName}" not found`);
+  const transform = topology.transform || null;
+  const decodedArcs = topoDecodeArcs(topology);
+
+  if (obj.type === "GeometryCollection"){
+    const features = [];
+    for (const g of obj.geometries || []){
+      if (g.type !== "Polygon" && g.type !== "MultiPolygon") continue;
+      let geometry = null;
+      if (g.type === "Polygon"){
+        geometry = { type:"Polygon", coordinates: topoRingsToCoords(decodedArcs, g.arcs, transform) };
+      } else {
+        const polys = [];
+        for (const polyRings of g.arcs){
+          polys.push(topoRingsToCoords(decodedArcs, polyRings, transform));
+        }
+        geometry = { type:"MultiPolygon", coordinates: polys };
+      }
+      features.push({ type:"Feature", properties: g.properties || {}, geometry });
+    }
+    return { type:"FeatureCollection", features };
+  }
+
+  if (obj.type === "Polygon"){
+    return { type:"Feature", properties:{}, geometry:{ type:"Polygon", coordinates: topoRingsToCoords(decodedArcs, obj.arcs, transform) } };
+  }
+  if (obj.type === "MultiPolygon"){
+    const polys = [];
+    for (const polyRings of obj.arcs){
+      polys.push(topoRingsToCoords(decodedArcs, polyRings, transform));
+    }
+    return { type:"Feature", properties:{}, geometry:{ type:"MultiPolygon", coordinates: polys } };
+  }
+  throw new Error(`Unsupported TopoJSON object type: ${obj.type}`);
+}
+
+/* Projection helpers */
+function projectToBBox(lon,lat,W,H,pad,bbox){
+  const x=pad + (lon-bbox.lonMin)/(bbox.lonMax-bbox.lonMin)*(W-2*pad);
+  const y=pad + (bbox.latMax-lat)/(bbox.latMax-bbox.latMin)*(H-2*pad);
+  return { x,y };
+}
+function lonLatFromGridInBBox(ix,iy,grid,bbox){
+  const lon=bbox.lonMin + (ix+0.5)*(bbox.lonMax-bbox.lonMin)/grid.nx;
+  const lat=bbox.latMax - (iy+0.5)*(bbox.latMax-bbox.latMin)/grid.ny;
+  return { lon, lat };
+}
+
+/* Draw outlines */
+function drawGeoJSONOutline(ctx,gj,W,H,pad,bbox){
+  if (!gj) return;
+  ctx.save();
+  ctx.lineWidth=1.1;
+  ctx.strokeStyle="rgba(255,255,255,0.65)";
+  ctx.globalAlpha=0.9;
+
+  function drawRing(ring){
+    if (!ring || ring.length<2) return;
+    ctx.beginPath();
+    for (let i=0;i<ring.length;i++){
+      const [lon,lat]=ring[i];
+      const { x,y }=projectToBBox(lon,lat,W,H,pad,bbox);
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+  function drawGeom(geom){
+    if (!geom) return;
+    if (geom.type==="Polygon") for (const ring of geom.coordinates) drawRing(ring);
+    else if (geom.type==="MultiPolygon") for (const poly of geom.coordinates) for (const ring of poly) drawRing(ring);
+  }
+
+  if (gj.type==="FeatureCollection") for (const f of gj.features||[]) drawGeom(f.geometry);
+  else if (gj.type==="Feature") drawGeom(gj.geometry);
+  else drawGeom(gj);
+
+  ctx.restore();
+}
+
+/* Mask build */
+function buildMaskForBBox(grid, bbox, boundaryGeoJSON){
+  const mask=new Uint8Array(grid.nx*grid.ny);
+  for (let iy=0; iy<grid.ny; iy++){
+    for (let ix=0; ix<grid.nx; ix++){
+      const { lon, lat } = lonLatFromGridInBBox(ix,iy,grid,bbox);
+      const inside = boundaryGeoJSON ? pointInGeoJSON(lon,lat,boundaryGeoJSON) : true;
+      mask[iy*grid.nx + ix] = inside ? 1 : 0;
+    }
+  }
+  return mask;
+}
+
+/* Colors */
+const PM_BLUE="#22c55e";
+const PM_YELLOW="#facc15";
+const PM_RAMP_BREAKS=[10,20,30,40,60,120];
+const PM_RAMP_COLORS=["#86efac","#fef08a","#fdba74","#fb7185","#c084fc","#7c3aed"];
+function hexToRgb(hex){ const h=hex.replace("#","").trim(); const n=parseInt(h,16); return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 }; }
+function rampColor(x, breaks, colors){
+  const min=breaks[0], max=breaks[breaks.length-1];
+  const v=clamp(x,min,max);
+  for (let i=0;i<breaks.length-1;i++){
+    const a=breaks[i], b=breaks[i+1];
+    if (v>=a && v<=b){
+      const t=(b===a)?0:(v-a)/(b-a);
+      const c1=hexToRgb(colors[i]);
+      const c2=hexToRgb(colors[i+1]);
+      const r=Math.round(lerp(c1.r,c2.r,t));
+      const g=Math.round(lerp(c1.g,c2.g,t));
+      const bb=Math.round(lerp(c1.b,c2.b,t));
+      return `rgb(${r},${g},${bb})`;
+    }
+  }
+  return colors[colors.length-1];
+}
+function pmToColor(pm){
+  if (!isFinite(pm)) return "rgba(0,0,0,0)";
+  if (pm<5) return PM_BLUE;
+  if (pm<10) return PM_YELLOW;
+  return rampColor(pm, PM_RAMP_BREAKS, PM_RAMP_COLORS);
+}
+function parseCssRgb(str){
+  const s=String(str).trim();
+  const m=s.match(/^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)(?:\s*,\s*([0-9.]+))?\s*\)$/i);
+  if (!m) return null;
+  return { r:clamp(parseFloat(m[1]),0,255), g:clamp(parseFloat(m[2]),0,255), b:clamp(parseFloat(m[3]),0,255), a:(m[4]!==undefined)?clamp(parseFloat(m[4]),0,1):1 };
+}
+function darkenCssColor(cssColor, factor=0.80, alphaScale=0.55){
+  const p=parseCssRgb(cssColor);
+  if (!p) return cssColor;
+  const r=Math.round(p.r*factor), g=Math.round(p.g*factor), b=Math.round(p.b*factor);
+  const a=clamp(p.a*alphaScale,0,1);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/* Legend render */
+function renderLegendInto(barEl, ticksEl){
+  barEl.innerHTML=""; ticksEl.innerHTML="";
+  const segs=[];
+  for (let i=0;i<4;i++) segs.push(PM_BLUE);
+  for (let i=0;i<4;i++) segs.push(PM_YELLOW);
+  const rampSamples=10;
+  for (let i=0;i<rampSamples;i++){
+    const t=i/(rampSamples-1);
+    const v=10 + t*(120-10);
+    segs.push(pmToColor(v));
+  }
+  for (const c of segs){ const d=document.createElement("div"); d.style.background=c; barEl.appendChild(d); }
+  for (const lab of ["0","5","10","120+"]){ const d=document.createElement("div"); d.textContent=lab; ticksEl.appendChild(d); }
+}
+
+/* ---------------- Data ---------------- */
+const DATA = {
+  loaded:false,
+  stations:[],
+  monthPoints:Array.from({length:12},()=>[]),
+  dayPointsByDate:new Map(),
+  availableDates:[],
+  stats:{ stationCount:0, dayCount:0 },
+};
+
+const state = { month:0, dayIndex:0, boundary:null, mask:null, mapSizePct:100 };
+
+const DEEP = {
+  selectedCityId:"London",
+  bbox:{ ...CITY_BY_ID.get("London").bbox },
+  z: CITY_BY_ID.get("London").z ?? DEFAULT_CITY_Z,
+  boundary:null,
+  mask:null,
+  showStations:true,
+  showBasemap:true,
+  showLabels:true,
+
+  stationScreen: [],
+  hoveredStationId: null,
+
+  labels: { main:[], sub:[], minor:[] },
+
+  baseline:{ pm2:Array.from({length:12},()=>null), computed:Array.from({length:12},()=>false) },
+  daily:{ maxEntries:64, map:new Map() },
+};
+
+const baselineGridCache = { pm2:Array.from({length:12},()=>null), computed:Array.from({length:12},()=>false) };
+const dailyGridCache = { maxEntries:48, map:new Map() };
+function dailyCacheGet(dateKey){
+  if (!dailyGridCache.map.has(dateKey)) return null;
+  const v=dailyGridCache.map.get(dateKey);
+  dailyGridCache.map.delete(dateKey);
+  dailyGridCache.map.set(dateKey,v);
+  return v;
+}
+function dailyCacheSet(dateKey, grid){
+  if (dailyGridCache.map.has(dateKey)) dailyGridCache.map.delete(dateKey);
+  dailyGridCache.map.set(dateKey, grid);
+  while (dailyGridCache.map.size>dailyGridCache.maxEntries){
+    const firstKey=dailyGridCache.map.keys().next().value;
+    dailyGridCache.map.delete(firstKey);
+  }
+}
+function invalidateOverviewCaches(){
+  for (let m=0;m<12;m++){ baselineGridCache.pm2[m]=null; baselineGridCache.computed[m]=false; }
+  dailyGridCache.map.clear();
+}
+function deepKey(dateKey){ return `${DEEP.selectedCityId}|${dateKey}`; }
+function deepDailyGet(key){
+  if (!DEEP.daily.map.has(key)) return null;
+  const v=DEEP.daily.map.get(key);
+  DEEP.daily.map.delete(key);
+  DEEP.daily.map.set(key,v);
+  return v;
+}
+function deepDailySet(key, grid){
+  if (DEEP.daily.map.has(key)) DEEP.daily.map.delete(key);
+  DEEP.daily.map.set(key, grid);
+  while (DEEP.daily.map.size>DEEP.daily.maxEntries){
+    const firstKey=DEEP.daily.map.keys().next().value;
+    DEEP.daily.map.delete(firstKey);
+  }
+}
+function invalidateDeepCaches(){
+  for (let m=0;m<12;m++){ DEEP.baseline.pm2[m]=null; DEEP.baseline.computed[m]=false; }
+  DEEP.daily.map.clear();
+}
+
+/* ---------------- IDW ---------------- */
+function idwAt(lon,lat,points){
+  if (!points || points.length===0) return NaN;
+  const k=IDW.k, radius=IDW.radiusKm, power=IDW.power, eps=IDW.eps;
+
+  const best=[];
+  let nearestD=Infinity;
+  let nearestV=NaN;
+
+  for (let i=0;i<points.length;i++){
+    const p=points[i];
+    const d=haversineKm(lon,lat,p.lon,p.lat);
+    if (d<nearestD){ nearestD=d; nearestV=p.value; }
+    if (d<1e-6) return p.value;
+
+    if (Number.isFinite(radius) && d>radius) continue;
+
+    if (best.length<k){
+      best.push({ d, v:p.value });
+      if (best.length===k) best.sort((a,b)=>b.d-a.d);
+    } else if (d<best[0].d){
+      best[0]={ d, v:p.value };
+      best.sort((a,b)=>b.d-a.d);
+    }
+  }
+
+  if (best.length < IDW.minNeighbors) return nearestV;
+
+  let sw=0, sv=0;
+  for (const b of best){
+    const w=1/(Math.pow(b.d,power)+eps);
+    sw += w; sv += w*b.v;
+  }
+  return (sw>0) ? (sv/sw) : nearestV;
+}
+
+/* ---------------- DOM ---------------- */
+const el = {
+  modelBadge: document.getElementById("modelBadge"),
+  metaLine: document.getElementById("metaLine"),
+  monthSelect: document.getElementById("monthSelect"),
+  playBtn: document.getElementById("playBtn"),
+  playDayBtn: document.getElementById("playDayBtn"),
+  speed1Btn: document.getElementById("speed1Btn"),
+  speed2Btn: document.getElementById("speed2Btn"),
+  speed8Btn: document.getElementById("speed8Btn"),
+  speed16Btn: document.getElementById("speed16Btn"),
+  toggleBordersBtn: document.getElementById("toggleBordersBtn"),
+  mapSizeSelect: document.getElementById("mapSizeSelect"),
+  dateSlider: document.getElementById("dateSlider"),
+  dateLabel: document.getElementById("dateLabel"),
+  citySectionDate: document.getElementById("citySectionDate"),
+  canvasWrap: document.getElementById("canvasWrap"),
+  canvas: document.getElementById("mapCanvas"),
+  tooltip: document.getElementById("tooltip"),
+
+  legendBar: document.getElementById("legendBar"),
+  legendTicks: document.getElementById("legendTicks"),
+
+  meanLondon: document.getElementById("meanLondon"),
+  meanWestMidlands: document.getElementById("meanWestMidlands"),
+  meanManchester: document.getElementById("meanManchester"),
+  meanWestYorkshire: document.getElementById("meanWestYorkshire"),
+  meanMerseyside: document.getElementById("meanMerseyside"),
+  meanBristolBath: document.getElementById("meanBristolBath"),
+  meanSouthCoast: document.getElementById("meanSouthCoast"),
+  meanGlasgow: document.getElementById("meanGlasgow"),
+
+  cityGrid: document.getElementById("cityGrid"),
+
+  deepTitle: document.getElementById("deepTitle"),
+  deepMeta: document.getElementById("deepMeta"),
+  deepGridLabel: document.getElementById("deepGridLabel"),
+  deepToggleBasemapBtn: document.getElementById("deepToggleBasemapBtn"),
+  deepToggleStationsBtn: document.getElementById("deepToggleStationsBtn"),
+  deepToggleLabelsBtn: document.getElementById("deepToggleLabelsBtn"),
+  deepFitBtn: document.getElementById("deepFitBtn"),
+  deepCanvasWrap: document.getElementById("deepCanvasWrap"),
+  tileLayer: document.getElementById("tileLayer"),
+  deepCanvas: document.getElementById("deepCanvas"),
+  deepTooltip: document.getElementById("deepTooltip"),
+  deepLegendBar: document.getElementById("deepLegendBar"),
+  deepLegendTicks: document.getElementById("deepLegendTicks"),
+  deepDateLabel: document.getElementById("deepDateLabel"),
+  deepDateSlider: document.getElementById("deepDateSlider"),
+};
+
+/* ---------------- Temporal ---------------- */
+function getCurrentTemporalContext(){
+  if (TIME_MODE==="day" && DATA.loaded && DATA.availableDates.length>0){
+    const idx=clamp(state.dayIndex,0,DATA.availableDates.length-1);
+    const dateKey=DATA.availableDates[idx];
+    const m=monthIndexFromDateKey(dateKey);
+    return { mode:"day", dateKey, month:(m===null?0:m), dayIndex:idx };
+  }
+  return { mode:"month", dateKey:null, month:state.month, dayIndex:null };
+}
+function updateDateLabel(){
+  const tctx = getCurrentTemporalContext();
+  if (tctx.mode === "day" && DATA.loaded && DATA.availableDates.length>0){
+    const dk = DATA.availableDates[clamp(state.dayIndex,0,DATA.availableDates.length-1)];
+    const m = monthIndexFromDateKey(dk);
+    const mm = (m===null?"?":MONTHS[m]);
+    const line = `${dk} (${mm})  [${state.dayIndex+1}/${DATA.availableDates.length}]`;
+    el.dateLabel.textContent = line;
+    el.deepDateLabel.textContent = line;
+    el.citySectionDate.textContent = `date=${dk}`;
+  } else {
+    const line = `Month: ${MONTHS[state.month]}`;
+    el.dateLabel.textContent = line;
+    el.deepDateLabel.textContent = line;
+    el.citySectionDate.textContent = `month=${MONTHS[state.month]}`;
+  }
+}
+function syncTemporalControls(){
+  const dayEnabled = (DATA.loaded && DATA.availableDates.length>0);
+  el.playDayBtn.disabled = !dayEnabled;
+  el.dateSlider.disabled = !dayEnabled;
+  el.deepDateSlider.disabled = !dayEnabled;
+
+  if (dayEnabled){
+    el.dateSlider.min="0";
+    el.dateSlider.max=String(Math.max(0, DATA.availableDates.length-1));
+    el.deepDateSlider.min=el.dateSlider.min;
+    el.deepDateSlider.max=el.dateSlider.max;
+    if (!IS_SCRUBBING){
+      const v=String(clamp(state.dayIndex,0,DATA.availableDates.length-1));
+      el.dateSlider.value=v;
+      el.deepDateSlider.value=v;
+    }
+  } else {
+    el.dateSlider.min="0"; el.dateSlider.max="0"; el.dateSlider.value="0";
+    el.deepDateSlider.min="0"; el.deepDateSlider.max="0"; el.deepDateSlider.value="0";
+  }
+  updateDateLabel();
+}
+
+/* ---------------- Playback ---------------- */
+function stopPlayback(){
+  ANIM.playing=false;
+  if (ANIM.timer){ clearInterval(ANIM.timer); ANIM.timer=null; }
+  el.playBtn.textContent="Play";
+  el.playDayBtn.textContent="Play days";
+  syncTemporalControls();
+}
+function startPlayback(mode){
+  stopPlayback();
+  ANIM.playing=true;
+  ANIM.mode=mode;
+  TIME_MODE=mode;
+  if (mode==="month"){ el.playBtn.textContent="Pause"; el.playDayBtn.textContent="Play days"; }
+  else { el.playDayBtn.textContent="Pause"; el.playBtn.textContent="Play"; }
+  syncTemporalControls();
+
+  ANIM.timer=setInterval(()=>{
+    if (ANIM.mode==="month"){
+      state.month=(state.month+1)%12;
+      el.monthSelect.value=String(state.month);
+      scheduleRender();
+      return;
+    }
+    if (!DATA.loaded || DATA.availableDates.length===0) return;
+    state.dayIndex=(state.dayIndex+1)%DATA.availableDates.length;
+    el.dateSlider.value=String(state.dayIndex);
+    el.deepDateSlider.value=String(state.dayIndex);
+    updateDateLabel();
+    scheduleRender();
+  }, currentIntervalMs());
+}
+function setSpeedMult(mult){
+  const m=Math.max(1, Number(mult)||1);
+  ANIM.speedMult=m;
+  const btns=[el.speed1Btn, el.speed2Btn, el.speed8Btn, el.speed16Btn];
+  for (const b of btns) b.classList.toggle("active", Number(b.dataset.speed)===m);
+  if (ANIM.playing) startPlayback(ANIM.mode);
+}
+
+/* ---------------- Rendering scheduler ---------------- */
+let _renderQueued=false;
+function scheduleRender(){
+  if (_renderQueued) return;
+  _renderQueued=true;
+  requestAnimationFrame(()=>{ _renderQueued=false; renderAll(); });
+}
+
+/* ---------------- PM grids ---------------- */
+function ensureBaselineGridForMonth(m){
+  if (baselineGridCache.computed[m] && baselineGridCache.pm2[m]) return;
+  const arr=new Float32Array(GRID_OVERVIEW.nx*GRID_OVERVIEW.ny); arr.fill(NaN);
+  const points=(DATA.loaded?DATA.monthPoints[m]:null)||[];
+  if (!points || points.length===0){ baselineGridCache.pm2[m]=arr; baselineGridCache.computed[m]=true; return; }
+  for (let iy=0; iy<GRID_OVERVIEW.ny; iy++){
+    for (let ix=0; ix<GRID_OVERVIEW.nx; ix++){
+      const { lon, lat } = lonLatFromGridInBBox(ix,iy,GRID_OVERVIEW,UK_BBOX);
+      let v=idwAt(lon,lat,points);
+      if (Number.isFinite(v)) v=clamp(v, IDW.clampMin, IDW.clampMax);
+      arr[iy*GRID_OVERVIEW.nx + ix] = v;
+    }
+  }
+  baselineGridCache.pm2[m]=arr;
+  baselineGridCache.computed[m]=true;
+}
+function ensureDailyGridForDate(dateKey){
+  if (!DATA.loaded || !dateKey) return null;
+  const cached=dailyCacheGet(dateKey);
+  if (cached) return cached;
+
+  const points=DATA.dayPointsByDate.get(dateKey)||[];
+  const arr=new Float32Array(GRID_OVERVIEW.nx*GRID_OVERVIEW.ny); arr.fill(NaN);
+  if (!points || points.length===0){ dailyCacheSet(dateKey,arr); return arr; }
+
+  for (let iy=0; iy<GRID_OVERVIEW.ny; iy++){
+    for (let ix=0; ix<GRID_OVERVIEW.nx; ix++){
+      const { lon, lat } = lonLatFromGridInBBox(ix,iy,GRID_OVERVIEW,UK_BBOX);
+      let v=idwAt(lon,lat,points);
+      if (Number.isFinite(v)) v=clamp(v, IDW.clampMin, IDW.clampMax);
+      arr[iy*GRID_OVERVIEW.nx + ix] = v;
+    }
+  }
+  dailyCacheSet(dateKey, arr);
+  return arr;
+}
+
+function ensureDeepBaselineGridForMonth(m){
+  if (DEEP.baseline.computed[m] && DEEP.baseline.pm2[m]) return;
+  const arr=new Float32Array(GRID_DEEP.nx*GRID_DEEP.ny); arr.fill(NaN);
+  const points=(DATA.loaded?DATA.monthPoints[m]:null)||[];
+  if (!points || points.length===0){ DEEP.baseline.pm2[m]=arr; DEEP.baseline.computed[m]=true; return; }
+  for (let iy=0; iy<GRID_DEEP.ny; iy++){
+    for (let ix=0; ix<GRID_DEEP.nx; ix++){
+      const { lon, lat } = lonLatFromGridInBBox(ix,iy,GRID_DEEP,DEEP.bbox);
+      let v=idwAt(lon,lat,points);
+      if (Number.isFinite(v)) v=clamp(v, IDW.clampMin, IDW.clampMax);
+      arr[iy*GRID_DEEP.nx + ix] = v;
+    }
+  }
+  DEEP.baseline.pm2[m]=arr;
+  DEEP.baseline.computed[m]=true;
+}
+function ensureDeepDailyGridForDate(dateKey){
+  if (!DATA.loaded || !dateKey) return null;
+  const key=deepKey(dateKey);
+  const cached=deepDailyGet(key);
+  if (cached) return cached;
+
+  const points=DATA.dayPointsByDate.get(dateKey)||[];
+  const arr=new Float32Array(GRID_DEEP.nx*GRID_DEEP.ny); arr.fill(NaN);
+  if (!points || points.length===0){ deepDailySet(key,arr); return arr; }
+
+  for (let iy=0; iy<GRID_DEEP.ny; iy++){
+    for (let ix=0; ix<GRID_DEEP.nx; ix++){
+      const { lon, lat } = lonLatFromGridInBBox(ix,iy,GRID_DEEP,DEEP.bbox);
+      let v=idwAt(lon,lat,points);
+      if (Number.isFinite(v)) v=clamp(v, IDW.clampMin, IDW.clampMax);
+      arr[iy*GRID_DEEP.nx + ix] = v;
+    }
+  }
+  deepDailySet(key, arr);
+  return arr;
+}
+function deepPMAt(lon,lat,tctx,ix=null,iy=null){
+  if (!DATA.loaded) return NaN;
+  if (tctx.mode==="month"){
+    ensureDeepBaselineGridForMonth(tctx.month);
+    const grid=DEEP.baseline.pm2[tctx.month];
+    if (!grid) return NaN;
+    if (ix!==null && iy!==null) return grid[iy*GRID_DEEP.nx + ix];
+  } else {
+    const grid=ensureDeepDailyGridForDate(tctx.dateKey);
+    if (!grid) return NaN;
+    if (ix!==null && iy!==null) return grid[iy*GRID_DEEP.nx + ix];
+  }
+  const fx=(lon-DEEP.bbox.lonMin)/(DEEP.bbox.lonMax-DEEP.bbox.lonMin);
+  const fy=(DEEP.bbox.latMax-lat)/(DEEP.bbox.latMax-DEEP.bbox.latMin);
+  const iix=clamp(Math.floor(fx*GRID_DEEP.nx),0,GRID_DEEP.nx-1);
+  const iiy=clamp(Math.floor(fy*GRID_DEEP.ny),0,GRID_DEEP.ny-1);
+  return deepPMAt(lon,lat,tctx,iix,iiy);
+}
+
+/* ---------------- Averages (hero cards) ---------------- */
+function formatUg(x){
+  if (!isFinite(x)) return "—";
+  return `${x.toFixed(1)} <small>µg/m³</small>`;
+}
+function computeAveragesForBBox(bbox){
+  const tctx=getCurrentTemporalContext();
+  if (tctx.mode==="month"){ if (DATA.loaded) ensureBaselineGridForMonth(tctx.month); }
+  else { if (DATA.loaded && tctx.dateKey) ensureDailyGridForDate(tctx.dateKey); }
+
+  const grid = (tctx.mode==="month") ? baselineGridCache.pm2[tctx.month] : ensureDailyGridForDate(tctx.dateKey);
+  if (!grid) return NaN;
+
+  let sum=0, count=0;
+  for (let iy=0; iy<GRID_OVERVIEW.ny; iy++){
+    for (let ix=0; ix<GRID_OVERVIEW.nx; ix++){
+      const inside = state.mask ? state.mask[iy*GRID_OVERVIEW.nx + ix] : 1;
+      if (!inside) continue;
+
+      const { lon, lat } = lonLatFromGridInBBox(ix,iy,GRID_OVERVIEW,UK_BBOX);
+      if (bbox){
+        if (lon<bbox.lonMin || lon>bbox.lonMax || lat<bbox.latMin || lat>bbox.latMax) continue;
+      }
+      const pm = grid[iy*GRID_OVERVIEW.nx + ix];
+      if (!Number.isFinite(pm)) continue;
+      sum += pm; count += 1;
+    }
+  }
+  return (count>0) ? (sum/count) : NaN;
+}
+
+/* ---------------- Station + locality helpers ---------------- */
+function stationLocalityFromMetadata(st){
+  const p = st?.props || st?.properties || st || {};
+  return p.locationName
+    || p.locality
+    || p.neighbourhood
+    || p.neighborhood
+    || p.suburb
+    || p.area
+    || p.district
+    || p.ward
+    || p.address
+    || null;
+}
+function stationLocationName(st){
+  const p = st?.props || st?.properties || st || {};
+  return p.locationName || p.name || p.stationName || null;
+}
+function stationLocality(st){
+  const p = st?.props || st?.properties || st || {};
+  const v = (p.locality || "").toString().trim();
+  return v || null;
+}
+
+function roundCoord(x, decimals){
+  const f = Math.pow(10, decimals);
+  return Math.round(x*f)/f;
+}
+async function reverseGeocodeLocality(lat, lon){
+  if (!GEO.enabled) return null;
+  const key = `${roundCoord(lat, GEO.round)},${roundCoord(lon, GEO.round)}`;
+  if (GEO.cache.has(key)) return GEO.cache.get(key);
+
+  const now = Date.now();
+  const wait = Math.max(0, GEO.minIntervalMs - (now - GEO.lastRequestAt));
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  GEO.lastRequestAt = Date.now();
+
+  const url = NOMINATIM_REVERSE_URL
+    .replace("{lat}", encodeURIComponent(String(lat)))
+    .replace("{lon}", encodeURIComponent(String(lon)));
+
+  if (GEO.inFlight && GEO.inFlight.abort){
+    try{ GEO.inFlight.abort(); }catch(e){}
+  }
+  const controller = new AbortController();
+  GEO.inFlight = controller;
+
+  try{
+    const res = await fetch(url, { method:"GET", headers:{ "Accept":"application/json" }, signal: controller.signal, cache:"no-store" });
+    if (!res.ok) throw new Error(`Nominatim ${res.status}`);
+    const j = await res.json();
+    const a = j.address || {};
+    const locality =
+      a.neighbourhood || a.suburb || a.city_district || a.district || a.borough || a.ward ||
+      a.village || a.town || a.city || a.county || null;
+    const road = a.road || a.pedestrian || a.footway || a.cycleway || null;
+    const postcode = a.postcode || null;
+    const out = { display_name: j.display_name || null, locality, road, postcode };
+    GEO.cache.set(key, out);
+    return out;
+  } catch(e){
+    GEO.cache.set(key, null);
+    return null;
+  } finally {
+    if (GEO.inFlight === controller) GEO.inFlight = null;
+  }
+}
+
+/* ---------------- Station draw + hover detection ---------------- */
+function hash01(s){
+  let h=2166136261;
+  s=String(s);
+  for (let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h>>>0) / 4294967295;
+}
+function drawStationsDeep(ctx,W,H,pad,tctx){
+  DEEP.stationScreen = [];
+  if (!DEEP.showStations || !DATA.loaded) return;
+
+  const base=Math.min(W,H);
+  const r=clamp(base*0.0065,1.6,3.4);
+  const spread=clamp(base*0.010,4,10);
+
+  ctx.save();
+  for (const s of DATA.stations){
+    const lon=s.lon, lat=s.lat;
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    if (DEEP.boundary && !pointInGeoJSON(lon,lat,DEEP.boundary)) continue;
+
+    const pm = deepPMAt(lon,lat,tctx);
+    const css=pmToColor(pm);
+    const fill=darkenCssColor(css,0.78,0.62);
+
+    const p = projectToBBox(lon,lat,W,H,pad,DEEP.bbox);
+    const a = hash01(String(s.id || s.name || `${lon},${lat}`));
+    const b = hash01("x"+String(s.id || s.name || `${lon},${lat}`));
+    const ang = a * Math.PI*2;
+    const rad = (0.35 + 0.65*b) * spread;
+    const x = p.x + Math.cos(ang)*rad;
+    const y = p.y + Math.sin(ang)*rad;
+
+    const isHover = (DEEP.hoveredStationId && (s.id === DEEP.hoveredStationId));
+    ctx.beginPath();
+    ctx.arc(x,y, isHover ? (r*1.4) : r, 0, Math.PI*2);
+    ctx.fillStyle = isHover ? "rgba(255,255,255,0.85)" : fill;
+    ctx.fill();
+    ctx.lineWidth = isHover ? 1.2 : 1.0;
+    ctx.strokeStyle = isHover ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.30)";
+    ctx.stroke();
+
+    DEEP.stationScreen.push({ id:s.id, name:s.name || s.id, lon, lat, x, y, r: isHover ? (r*1.4) : r, meta:s });
+  }
+  ctx.restore();
+}
+function findStationAt(x,y){
+  let best=null, bestD=Infinity;
+  for (const p of DEEP.stationScreen){
+    const dx=x-p.x, dy=y-p.y;
+    const d=Math.sqrt(dx*dx+dy*dy);
+    const tol=Math.max(10, p.r*3.0);
+    if (d<=tol && d<bestD){ best=p; bestD=d; }
+  }
+  return best;
+}
+
+/* ---------------- Place labels ---------------- */
+function computeDeepLabels(){
+  if (!DATA.loaded) { DEEP.labels={main:[], sub:[], minor:[]}; return; }
+
+  const inside = [];
+  for (const s of DATA.stations){
+    if (!Number.isFinite(s.lon) || !Number.isFinite(s.lat)) continue;
+    if (s.lon < DEEP.bbox.lonMin || s.lon > DEEP.bbox.lonMax || s.lat < DEEP.bbox.latMin || s.lat > DEEP.bbox.latMax) continue;
+    if (DEEP.boundary && !pointInGeoJSON(s.lon, s.lat, DEEP.boundary)) continue;
+    inside.push(s);
+  }
+
+  const byLocality = new Map();
+  for (const s of inside){
+    const loc = stationLocality(s);
+    if (!loc) continue;
+    if (!byLocality.has(loc)) byLocality.set(loc, { name:loc, count:0, lonSum:0, latSum:0 });
+    const a=byLocality.get(loc);
+    a.count += 1;
+    a.lonSum += s.lon;
+    a.latSum += s.lat;
+  }
+  const localityClusters = Array.from(byLocality.values()).map(a => ({
+    kind:"locality",
+    name:a.name,
+    count:a.count,
+    lon:a.lonSum / Math.max(1,a.count),
+    lat:a.latSum / Math.max(1,a.count),
+  })).sort((a,b)=>b.count-a.count);
+
+  const byLocationName = new Map();
+  for (const s of inside){
+    const nm = stationLocationName(s);
+    if (!nm) continue;
+    if (!byLocationName.has(nm)) byLocationName.set(nm, { name:nm, count:0, lonSum:0, latSum:0 });
+    const a=byLocationName.get(nm);
+    a.count += 1;
+    a.lonSum += s.lon;
+    a.latSum += s.lat;
+  }
+  const locationNameClusters = Array.from(byLocationName.values())
+    .map(a => ({ kind:"station", name:a.name, count:a.count, lon:a.lonSum/Math.max(1,a.count), lat:a.latSum/Math.max(1,a.count) }))
+    .sort((a,b)=>b.count-a.count);
+
+  const main = localityClusters.slice(0, LABELS.maxMain);
+  const sub  = localityClusters.slice(LABELS.maxMain, LABELS.maxMain + LABELS.maxSub);
+  const minor = locationNameClusters.slice(0, LABELS.maxMinor);
+
+  DEEP.labels = { main, sub, minor };
+}
+
+function drawTextLabel(ctx, text, x, y, opts){
+  const {
+    fontSize=14,
+    weight=700,
+    color="rgba(255,255,255,0.86)",
+    halo="rgba(0,0,0,0.55)",
+    haloWidth=4,
+    maxWidth=220,
+    uppercase=false,
+  } = opts || {};
+
+  const t = uppercase ? String(text).toUpperCase() : String(text);
+
+  ctx.save();
+  ctx.font = `${weight} ${fontSize}px ${getComputedStyle(document.body).fontFamily}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  let draw = t;
+  if (maxWidth && ctx.measureText(draw).width > maxWidth){
+    while (draw.length > 4 && ctx.measureText(draw + "…").width > maxWidth){
+      draw = draw.slice(0, -1);
+    }
+    draw = draw + "…";
+  }
+
+  ctx.lineJoin = "round";
+  ctx.miterLimit = 2;
+  ctx.strokeStyle = halo;
+  ctx.lineWidth = haloWidth;
+  ctx.strokeText(draw, x, y);
+
+  ctx.fillStyle = color;
+  ctx.fillText(draw, x, y);
+  ctx.restore();
+}
+
+function layoutAndDrawLabelsForBBox(ctx, W, H, pad, bbox, labels, stylePreset){
+  const base = Math.min(W,H);
+
+  const mainSize = clamp(Math.round(base*0.045), 14, 26);
+  const subSize  = clamp(Math.round(base*0.032), 11, 18);
+  const minSize  = clamp(Math.round(base*0.022), 10, 14);
+
+  const candidates = [];
+
+  for (const l of (labels?.main || [])){
+    candidates.push({
+      name:l.name, lon:l.lon, lat:l.lat,
+      score: 1000 + (l.count||1)*10,
+      style: {
+        fontSize: mainSize,
+        weight: stylePreset.mainWeight,
+        haloWidth: stylePreset.mainHaloWidth,
+        maxWidth: Math.round(W*0.55),
+        color:"rgba(255,255,255,0.90)",
+        halo:"rgba(0,0,0,0.58)",
+      }
+    });
+  }
+  for (const l of (labels?.sub || [])){
+    candidates.push({
+      name:l.name, lon:l.lon, lat:l.lat,
+      score: 600 + (l.count||1)*6,
+      style: {
+        fontSize: subSize,
+        weight: stylePreset.subWeight,
+        haloWidth: stylePreset.subHaloWidth,
+        maxWidth: Math.round(W*0.45),
+        color:"rgba(255,255,255,0.80)",
+        halo:"rgba(0,0,0,0.55)",
+      }
+    });
+  }
+  for (const l of (labels?.minor || [])){
+    candidates.push({
+      name:l.name, lon:l.lon, lat:l.lat,
+      score: 300 + (l.count||1)*2,
+      style: {
+        fontSize: minSize,
+        weight: stylePreset.minorWeight,
+        haloWidth: stylePreset.minorHaloWidth,
+        maxWidth: Math.round(W*0.38),
+        color:"rgba(255,255,255,0.70)",
+        halo:"rgba(0,0,0,0.52)",
+      }
+    });
+  }
+
+  candidates.sort((a,b)=>b.score-a.score);
+
+  const placed = [];
+  function farEnough(x,y){
+    for (const p of placed){
+      const dx=x-p.x, dy=y-p.y;
+      if (Math.sqrt(dx*dx+dy*dy) < LABELS.minDistancePx) return false;
+    }
+    return true;
+  }
+
+  const maxTotal = (labels?.main?.length||0) + (labels?.sub?.length||0) + Math.min((labels?.minor?.length||0), 12);
+  let used=0;
+
+  for (const c of candidates){
+    if (used >= maxTotal) break;
+    const p = projectToBBox(c.lon, c.lat, W, H, pad, bbox);
+    const x = clamp(p.x, pad+10, W-pad-10);
+    const y = clamp(p.y, pad+10, H-pad-10);
+    if (!farEnough(x,y)) continue;
+    drawTextLabel(ctx, c.name, x, y, c.style);
+    placed.push({x,y});
+    used += 1;
+  }
+}
+
+function buildUKOverviewLabelGroups(){
+  const main=[], sub=[], minor=[];
+  for (const l of UK_OVERVIEW_LABELS){
+    const item = { name:l.name, lon:l.lon, lat:l.lat, count: 10 };
+    if (l.tier==="main") main.push(item);
+    else if (l.tier==="sub") sub.push(item);
+    else minor.push({ ...item, count: 3 });
+  }
+  return { main, sub, minor };
+}
+
+/* ---------------- Tiles (OSM raster basemap) ---------------- */
+function lonToTileX(lon, z){
+  return Math.floor(((lon + 180) / 360) * Math.pow(2, z));
+}
+function latToTileY(lat, z){
+  const rad = lat * Math.PI/180;
+  const n = Math.pow(2, z);
+  return Math.floor((1 - Math.log(Math.tan(rad) + 1/Math.cos(rad)) / Math.PI) / 2 * n);
+}
+function tileXToLon(x, z){
+  return x / Math.pow(2,z) * 360 - 180;
+}
+function tileYToLat(y, z){
+  const n = Math.PI - 2 * Math.PI * y / Math.pow(2,z);
+  return (180/Math.PI) * Math.atan(0.5*(Math.exp(n)-Math.exp(-n)));
+}
+function computeTileZForBBox(bbox, pxW, pxH){
+  const maxZ = 16, minZ = 8;
+  let best = DEFAULT_CITY_Z;
+  for (let z=maxZ; z>=minZ; z--){
+    const xMin=lonToTileX(bbox.lonMin,z), xMax=lonToTileX(bbox.lonMax,z);
+    const yMin=latToTileY(bbox.latMax,z), yMax=latToTileY(bbox.latMin,z);
+    const tilesWide = Math.abs(xMax-xMin)+1;
+    const tilesHigh = Math.abs(yMax-yMin)+1;
+    if (tilesWide*256 <= pxW*1.2 && tilesHigh*256 <= pxH*1.2){
+      best=z; break;
+    }
+  }
+  return best;
+}
+function renderDeepTiles(){
+  const layer = el.tileLayer;
+  layer.innerHTML = "";
+  layer.style.display = DEEP.showBasemap ? "block" : "none";
+  if (!DEEP.showBasemap) return;
+
+  const r = el.deepCanvasWrap.getBoundingClientRect();
+  const W=r.width, H=r.height;
+
+  const city = CITY_BY_ID.get(DEEP.selectedCityId);
+  const z = clamp(city?.z ?? computeTileZForBBox(DEEP.bbox, W, H), OSM_MIN_Z, OSM_MAX_Z);
+  DEEP.z = z;
+
+  const x0 = lonToTileX(DEEP.bbox.lonMin, z);
+  const x1 = lonToTileX(DEEP.bbox.lonMax, z);
+  const y0 = latToTileY(DEEP.bbox.latMax, z);
+  const y1 = latToTileY(DEEP.bbox.latMin, z);
+
+  const xMin = Math.min(x0,x1), xMax = Math.max(x0,x1);
+  const yMin = Math.min(y0,y1), yMax = Math.max(y0,y1);
+
+  const lonMin = DEEP.bbox.lonMin, lonMax = DEEP.bbox.lonMax;
+  const latMin = DEEP.bbox.latMin, latMax = DEEP.bbox.latMax;
+
+  function projectNoPad(lon,lat){
+    const x = (lon-lonMin)/(lonMax-lonMin)*W;
+    const y = (latMax-lat)/(latMax-latMin)*H;
+    return {x,y};
+  }
+
+  for (let ty=yMin; ty<=yMax; ty++){
+    for (let tx=xMin; tx<=xMax; tx++){
+      const tileLonMin = tileXToLon(tx, z);
+      const tileLonMax = tileXToLon(tx+1, z);
+      const tileLatMax = tileYToLat(ty, z);
+      const tileLatMin = tileYToLat(ty+1, z);
+
+      const p0 = projectNoPad(tileLonMin, tileLatMax);
+      const p1 = projectNoPad(tileLonMax, tileLatMin);
+
+      const img = document.createElement("img");
+      img.decoding="async";
+      img.loading="lazy";
+      img.alt="";
+      img.width = Math.max(1, Math.ceil(p1.x - p0.x));
+      img.height = Math.max(1, Math.ceil(p1.y - p0.y));
+      img.style.left = `${Math.floor(p0.x)}px`;
+      img.style.top = `${Math.floor(p0.y)}px`;
+      img.style.width = `${Math.ceil(p1.x - p0.x)}px`;
+      img.style.height = `${Math.ceil(p1.y - p0.y)}px`;
+      img.src = OSM_TILE_TEMPLATE.replace("{z}", z).replace("{x}", tx).replace("{y}", ty);
+      layer.appendChild(img);
+    }
+  }
+}
+
+/* ---------------- Rendering maps ---------------- */
+function renderOverviewMap(){
+  const canvas=el.canvas;
+  const rect=el.canvasWrap.getBoundingClientRect();
+  const dpr=Math.max(1, Math.floor(window.devicePixelRatio || 1));
+  canvas.width=Math.floor(rect.width*dpr);
+  canvas.height=Math.floor(rect.height*dpr);
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  const W=rect.width, H=rect.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle="rgba(0,0,0,0.12)";
+  ctx.fillRect(0,0,W,H);
+
+  const pad=20;
+  const cellW=(W-2*pad)/GRID_OVERVIEW.nx;
+  const cellH=(H-2*pad)/GRID_OVERVIEW.ny;
+
+  const tctx=getCurrentTemporalContext();
+  if (tctx.mode==="month"){ if (DATA.loaded) ensureBaselineGridForMonth(tctx.month); }
+  else { if (DATA.loaded && tctx.dateKey) ensureDailyGridForDate(tctx.dateKey); }
+
+  const grid = (tctx.mode==="month") ? baselineGridCache.pm2[tctx.month] : ensureDailyGridForDate(tctx.dateKey);
+
+  for (let iy=0; iy<GRID_OVERVIEW.ny; iy++){
+    for (let ix=0; ix<GRID_OVERVIEW.nx; ix++){
+      const inside = state.mask ? state.mask[iy*GRID_OVERVIEW.nx + ix] : 1;
+      if (!inside) continue;
+
+      const pm = grid ? grid[iy*GRID_OVERVIEW.nx + ix] : NaN;
+      const fill=pmToColor(pm);
+
+      const x=pad + ix*cellW;
+      const y=pad + iy*cellH;
+      ctx.fillStyle=fill;
+      ctx.fillRect(x,y,cellW+0.5,cellH+0.5);
+    }
+  }
+
+  // UK labels on overview (always present)
+  if (LABELS.enabled){
+    const groups = buildUKOverviewLabelGroups();
+    layoutAndDrawLabelsForBBox(ctx, W, H, pad, UK_BBOX, groups, LABEL_STYLE);
+  }
+
+  if (SHOW_BORDERS) drawGeoJSONOutline(ctx,state.boundary,W,H,pad,UK_BBOX);
+
+  ctx.strokeStyle="rgba(255,255,255,0.16)";
+  ctx.lineWidth=1;
+  ctx.strokeRect(pad-0.5,pad-0.5,(W-2*pad)+1,(H-2*pad)+1);
+}
+
+function renderDeepMap(){
+  const canvas=el.deepCanvas;
+  const rect=el.deepCanvasWrap.getBoundingClientRect();
+  const dpr=Math.max(1, Math.floor(window.devicePixelRatio || 1));
+  canvas.width=Math.floor(rect.width*dpr);
+  canvas.height=Math.floor(rect.height*dpr);
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  const W=rect.width, H=rect.height;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle="rgba(0,0,0,0.10)";
+  ctx.fillRect(0,0,W,H);
+
+  const pad=0;
+  const cellW=(W-2*pad)/GRID_DEEP.nx;
+  const cellH=(H-2*pad)/GRID_DEEP.ny;
+
+  const tctx=getCurrentTemporalContext();
+  if (tctx.mode==="month"){ if (DATA.loaded) ensureDeepBaselineGridForMonth(tctx.month); }
+  else { if (DATA.loaded && tctx.dateKey) ensureDeepDailyGridForDate(tctx.dateKey); }
+
+  const grid = (tctx.mode==="month") ? DEEP.baseline.pm2[tctx.month] : ensureDeepDailyGridForDate(tctx.dateKey);
+
+  ctx.save();
+  ctx.globalAlpha = 0.60;
+  for (let iy=0; iy<GRID_DEEP.ny; iy++){
+    for (let ix=0; ix<GRID_DEEP.nx; ix++){
+      const inside = DEEP.mask ? DEEP.mask[iy*GRID_DEEP.nx + ix] : 1;
+      if (!inside) continue;
+
+      const pm = grid ? grid[iy*GRID_DEEP.nx + ix] : NaN;
+      const fill=pmToColor(pm);
+
+      const x=pad + ix*cellW;
+      const y=pad + iy*cellH;
+      ctx.fillStyle=fill;
+      ctx.fillRect(x,y,cellW+0.5,cellH+0.5);
+    }
+  }
+  ctx.restore();
+
+  drawStationsDeep(ctx,W,H,pad,tctx);
+
+  if (DEEP.showLabels && LABELS.enabled){
+    layoutAndDrawLabelsForBBox(ctx, W, H, pad, DEEP.bbox, DEEP.labels, LABEL_STYLE);
+  }
+
+  if (SHOW_BORDERS) drawGeoJSONOutline(ctx,DEEP.boundary,W,H,pad,DEEP.bbox);
+
+  ctx.strokeStyle="rgba(255,255,255,0.16)";
+  ctx.lineWidth=1;
+  ctx.strokeRect(0.5,0.5,W-1,H-1);
+
+  el.deepGridLabel.textContent = `${GRID_DEEP.nx}×${GRID_DEEP.ny} | z${DEEP.z}`;
+}
+
+/* ---------------- Tooltips / hover ---------------- */
+function showDeepTooltipAt(x,y,html){
+  el.deepTooltip.style.display="block";
+  el.deepTooltip.style.left=`${x}px`;
+  el.deepTooltip.style.top=`${y}px`;
+  el.deepTooltip.innerHTML=html;
+}
+function hideDeepTooltip(){ el.deepTooltip.style.display="none"; }
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+function stationTooltipHTML(station, pm, tctx, locObj){
+  const props = station?.meta?.props || station?.meta?.properties || station?.meta || {};
+  const locationName = props.locationName || station.name || station.id;
+  const locality = (props.locality || "").toString().trim() || null;
+  const provider = props.providerName || null;
+
+  const timeLine = (tctx.mode==="month")
+    ? `<div><span class="muted">month</span> ${MONTHS[tctx.month]}</div>`
+    : `<div><span class="muted">date</span> ${tctx.dateKey}</div>`;
+
+  let localityLine = locality ? escapeHtml(locality) : null;
+  if (!localityLine && (locObj?.locality || locObj?.road || locObj?.postcode || locObj?.display_name)){
+    localityLine = escapeHtml(String(locObj.locality || locObj.road || locObj.postcode || locObj.display_name));
+  }
+
+  return `
+    <div><span class="muted">station</span> <strong>${escapeHtml(String(locationName))}</strong></div>
+    <div><span class="muted">locality</span> ${localityLine ? localityLine : "(unknown)"}</div>
+    ${provider ? `<div><span class="muted">provider</span> ${escapeHtml(String(provider))}</div>` : ""}
+    <div><span class="muted">lon</span> ${station.lon.toFixed(5)} <span class="muted">lat</span> ${station.lat.toFixed(5)}</div>
+    ${timeLine}
+    <div style="margin-top:6px;"><span class="muted">PM2.5</span> <strong>${Number.isFinite(pm) ? pm.toFixed(1) : "—"} µg/m³</strong></div>
+  `;
+}
+function setupDeepHover(){
+  const wrap=el.deepCanvasWrap;
+  wrap.addEventListener("mouseleave", ()=>{
+    DEEP.hoveredStationId = null;
+    hideDeepTooltip();
+    scheduleRender();
+  });
+
+  wrap.addEventListener("mousemove", async (ev)=>{
+    const r=wrap.getBoundingClientRect();
+    const x=ev.clientX - r.left;
+    const y=ev.clientY - r.top;
+
+    const hit = findStationAt(x,y);
+    if (!hit){
+      if (DEEP.hoveredStationId !== null){
+        DEEP.hoveredStationId = null;
+        hideDeepTooltip();
+        scheduleRender();
+      }
+      return;
+    }
+
+    if (DEEP.hoveredStationId !== hit.id){
+      DEEP.hoveredStationId = hit.id;
+      scheduleRender();
+    }
+
+    const tctx=getCurrentTemporalContext();
+    const pm = deepPMAt(hit.lon, hit.lat, tctx);
+
+    const props = hit?.meta?.props || hit?.meta || {};
+    const hasLocality = ((props.locality || "").toString().trim().length > 0);
+
+    if (hasLocality || !GEO.enabled){
+      showDeepTooltipAt(x,y, stationTooltipHTML(hit, pm, tctx, null));
+      return;
+    }
+
+    showDeepTooltipAt(x,y, stationTooltipHTML(hit, pm, tctx, { locality:"Loading…" }));
+    const loc = await reverseGeocodeLocality(hit.lat, hit.lon);
+    if (DEEP.hoveredStationId !== hit.id) return;
+    showDeepTooltipAt(x,y, stationTooltipHTML(hit, pm, tctx, loc));
+  });
+}
+
+/* ---------------- Boundary loading ---------------- */
+async function loadBoundaryFromONSdigitalTopo(){
+  const res = await fetch(UK_TOPOJSON_URL, { cache:"force-cache" });
+  if (!res.ok) throw new Error(`TopoJSON fetch failed: ${res.status}`);
+  const topo = await res.json();
+  const gj = topoObjectToGeoJSON(topo, "uk");
+  return gj;
+}
+async function fetchTopoAsFeatureCollection(url){
+  const res = await fetch(url, { cache:"force-cache" });
+  if (!res.ok) throw new Error(`Topo fetch failed: ${res.status}`);
+  const topo = await res.json();
+  const name = topoAnyObjectName(topo);
+  if (!name) throw new Error("Topo has no objects");
+  const gj = topoObjectToGeoJSON(topo, name);
+  return gj;
+}
+function normalizeName(s){ return String(s||"").trim().toLowerCase(); }
+function featureName(f){
+  const p=f?.properties||{};
+  return (p.name || p.NAME || p.lad23nm || p.LAD23NM || p.cty23nm || p.CTY23NM || p.nm || p.NM || "").toString();
+}
+function selectFeaturesByNameContains(gj, needles){
+  const out=[];
+  const nset=(needles||[]).map(x=>normalizeName(x));
+  for (const f of (gj?.features||[])){
+    const nm=normalizeName(featureName(f));
+    if (!nm) continue;
+    for (const n of nset){
+      if (n && nm.includes(n)){ out.push(f); break; }
+    }
+  }
+  return out;
+}
+function selectFeatureByExactName(gj, exact){
+  const target=normalizeName(exact);
+  for (const f of (gj?.features||[])){
+    const nm=normalizeName(featureName(f));
+    if (nm === target) return f;
+  }
+  return null;
+}
+async function loadCityBoundary(cityId){
+  const city=CITY_BY_ID.get(cityId);
+  if (!city) return { geojson:null, loadedFrom:"unknown" };
+
+  let lad=null, met=null;
+  try { lad = await fetchTopoAsFeatureCollection(ONS_LAD_GEOJSON_URL); } catch(e){ lad=null; }
+  try { met = await fetchTopoAsFeatureCollection(ONS_METCOUNTY_TOPOJSON_URL); } catch(e){ met=null; }
+
+  let features=[];
+  if (city.metCountyName && met){
+    const f = selectFeatureByExactName(met, city.metCountyName);
+    if (f) features=[f];
+  }
+  if (features.length===0 && city.ladNameContainsAny && lad){
+    features = selectFeaturesByNameContains(lad, city.ladNameContainsAny);
+  }
+  if (features.length===0){
+    return { geojson:null, loadedFrom:"none (bbox fallback)" };
+  }
+  return { geojson:{ type:"FeatureCollection", features }, loadedFrom:`ONS boundaries (${features.length} feature(s))` };
+}
+
+/* ---------------- Data parsing ---------------- */
+function parseStationsAndRows(json){
+  const stations=new Map();
+  const rows=[];
+  if (json && typeof json==="object" && !Array.isArray(json) && json.stations && json.data){
+    for (const [id,s] of Object.entries(json.stations)){
+      const lat=safeNum(s.lat ?? s.latitude);
+      const lon=safeNum(s.lon ?? s.lng ?? s.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      stations.set(id,{ id, lat, lon, name: s.locationName ?? s.name ?? s.station ?? s.site ?? id, props: { ...s } });
+    }
+    for (const [id,byDate] of Object.entries(json.data)){
+      const meta=stations.get(id);
+      if (!meta || !byDate || typeof byDate!=="object") continue;
+      for (const [dateStr,payload] of Object.entries(byDate)){
+        const month=monthIndexFromDateLike(dateStr);
+        const dateKey=dateKeyFromDateLike(dateStr);
+        if (month===null || !dateKey) continue;
+        const v=safeNum(payload?.pm25 ?? payload?.value ?? payload?.PM25 ?? payload);
+        if (!Number.isFinite(v)) continue;
+        rows.push({ id, lon:meta.lon, lat:meta.lat, month, dateKey, value:v });
+      }
+    }
+    return { stations, rows };
+  }
+  if (Array.isArray(json)){
+    for (const r of json){
+      const id=r?.sensorId ?? r?.stationId ?? r?.siteId ?? r?.id ?? r?.station ?? r?.sensor;
+      if (!id) continue;
+      const lat=safeNum(r?.lat ?? r?.latitude);
+      const lon=safeNum(r?.lon ?? r?.lng ?? r?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      const dt=r?.date ?? r?.datetime ?? r?.time ?? r?.timestamp;
+      const month=monthIndexFromDateLike(dt);
+      const dateKey=dateKeyFromDateLike(dt);
+      if (month===null || !dateKey) continue;
+      const v=safeNum(r?.pm25 ?? r?.value ?? r?.PM25 ?? r?.pm_25);
+      if (!Number.isFinite(v)) continue;
+
+      if (!stations.has(id)){
+        stations.set(id,{ id, lat, lon, name: r?.locationName ?? r?.name ?? r?.stationName ?? String(id), props: { ...r } });
+      }
+      rows.push({ id, lon, lat, month, dateKey, value:v });
+    }
+    return { stations, rows };
+  }
+  throw new Error("Unrecognized JSON structure for PM2.5 data.");
+}
+function aggregateMonthlyMeans(rows){
+  const byStationMonth=new Map();
+  for (const r of rows){
+    const key=`${r.id}|${r.month}`;
+    if (!byStationMonth.has(key)) byStationMonth.set(key,{ sum:0, count:0, lon:r.lon, lat:r.lat });
+    const a=byStationMonth.get(key);
+    a.sum+=r.value; a.count+=1;
+  }
+  const monthPoints=Array.from({length:12},()=>[]);
+  for (const [key,a] of byStationMonth.entries()){
+    const m=parseInt(key.split("|")[1],10);
+    if (!(m>=0 && m<12) || a.count<=0) continue;
+    const mean=a.sum/a.count;
+    if (!Number.isFinite(mean)) continue;
+    monthPoints[m].push({ lon:a.lon, lat:a.lat, value:mean });
+  }
+  return monthPoints;
+}
+function aggregateDailyMeans(rows){
+  const byStationDay=new Map();
+  for (const r of rows){
+    if (!r.dateKey) continue;
+    const key=`${r.id}|${r.dateKey}`;
+    if (!byStationDay.has(key)) byStationDay.set(key,{ sum:0, count:0, lon:r.lon, lat:r.lat, dateKey:r.dateKey });
+    const a=byStationDay.get(key);
+    a.sum+=r.value; a.count+=1;
+  }
+  const dayPointsByDate=new Map();
+  for (const a of byStationDay.values()){
+    if (a.count<=0) continue;
+    const mean=a.sum/a.count;
+    if (!Number.isFinite(mean)) continue;
+    if (!dayPointsByDate.has(a.dateKey)) dayPointsByDate.set(a.dateKey,[]);
+    dayPointsByDate.get(a.dateKey).push({ lon:a.lon, lat:a.lat, value:mean });
+  }
+  const availableDates=Array.from(dayPointsByDate.keys()).sort();
+  return { dayPointsByDate, availableDates };
+}
+async function loadPM25Data(){
+  try{
+    const res=await fetch(PM25_DATA_URL,{ cache:"no-store" });
+    if (!res.ok) throw new Error(`PM2.5 data fetch failed: ${res.status} (${PM25_DATA_URL})`);
+    const json=await res.json();
+
+    const { stations, rows } = parseStationsAndRows(json);
+    DATA.loaded=true;
+    DATA.stations=Array.from(stations.values());
+    DATA.monthPoints=aggregateMonthlyMeans(rows);
+
+    const daily=aggregateDailyMeans(rows);
+    DATA.dayPointsByDate=daily.dayPointsByDate;
+    DATA.availableDates=daily.availableDates;
+
+    DATA.stats.stationCount=DATA.stations.length;
+    DATA.stats.dayCount=DATA.availableDates.length;
+
+    invalidateOverviewCaches();
+    invalidateDeepCaches();
+
+    el.modelBadge.textContent="mass concentration (local JSON)";
+    state.dayIndex=0;
+    TIME_MODE = (DATA.availableDates.length>0) ? "day" : "month";
+    syncTemporalControls();
+    return true;
+  } catch(e){
+    DATA.loaded=false;
+    DATA.stations=[];
+    DATA.monthPoints=Array.from({length:12},()=>[]);
+    DATA.dayPointsByDate=new Map();
+    DATA.availableDates=[];
+    DATA.stats.stationCount=0;
+    DATA.stats.dayCount=0;
+
+    invalidateOverviewCaches();
+    invalidateDeepCaches();
+
+    el.modelBadge.textContent="data missing (failed to load local JSON)";
+    TIME_MODE="month";
+    stopPlayback();
+    syncTemporalControls();
+
+    console.warn("[PM2.5] Data load failed:", e?.message ?? e);
+    return false;
+  }
+}
+
+/* ---------------- City selection ---------------- */
+async function selectDeepCity(cityId){
+  const city = CITY_BY_ID.get(cityId);
+  if (!city) return;
+
+  DEEP.selectedCityId = cityId;
+  DEEP.bbox = { ...city.bbox };
+  DEEP.z = city.z ?? DEFAULT_CITY_Z;
+  invalidateDeepCaches();
+
+  for (const card of document.getElementById("cityGrid").querySelectorAll(".city-card")){
+    card.classList.toggle("active", card.dataset.city === cityId);
+  }
+
+  el.deepTitle.textContent = `City deep-dive — ${city.label}`;
+  el.deepMeta.textContent = "Loading city boundary…";
+
+  const b = await loadCityBoundary(cityId);
+  DEEP.boundary = b.geojson;
+  DEEP.mask = buildMaskForBBox(GRID_DEEP, DEEP.bbox, DEEP.boundary);
+
+  computeDeepLabels();
+
+  el.deepMeta.textContent =
+    `Boundary: ${b.loadedFrom} | bbox=${city.bbox.lonMin.toFixed(2)},${city.bbox.latMin.toFixed(2)} → ${city.bbox.lonMax.toFixed(2)},${city.bbox.latMax.toFixed(2)}`;
+
+  renderDeepTiles();
+  scheduleRender();
+
+  try { el.deepCanvasWrap.scrollIntoView({ behavior:"smooth", block:"start" }); } catch(e){}
+}
+
+/* ---------------- UI init ---------------- */
+function buildMonthSelect(){
+  el.monthSelect.innerHTML="";
+  MONTHS.forEach((m,i)=>{
+    const opt=document.createElement("option");
+    opt.value=String(i);
+    opt.textContent=m;
+    el.monthSelect.appendChild(opt);
+  });
+  el.monthSelect.value=String(state.month);
+}
+function setMapSizePct(pct){
+  const p=clamp(parseInt(pct,10)||100,10,100);
+  state.mapSizePct=p;
+  el.canvasWrap.style.width = `${p}%`;
+  scheduleRender();
+}
+function initUI(){
+  buildMonthSelect();
+  renderLegendInto(el.legendBar, el.legendTicks);
+  renderLegendInto(el.deepLegendBar, el.deepLegendTicks);
+
+  el.mapSizeSelect.value=String(state.mapSizePct);
+  setMapSizePct(state.mapSizePct);
+
+  el.monthSelect.addEventListener("change", ()=>{
+    stopPlayback();
+    TIME_MODE="month";
+    state.month=parseInt(el.monthSelect.value,10);
+    scheduleRender();
+  });
+
+  function onScrubStart(){ IS_SCRUBBING=true; }
+  function onScrubEnd(){
+    if (!IS_SCRUBBING) return;
+    IS_SCRUBBING=false;
+    if (!DATA.loaded || DATA.availableDates.length===0) return;
+    TIME_MODE="day";
+    state.dayIndex=parseInt(el.dateSlider.value,10) || 0;
+    el.deepDateSlider.value = el.dateSlider.value;
+    updateDateLabel();
+    scheduleRender();
+  }
+  el.dateSlider.addEventListener("pointerdown", onScrubStart);
+  el.deepDateSlider.addEventListener("pointerdown", onScrubStart);
+  window.addEventListener("pointerup", onScrubEnd);
+
+  function onSliderInput(source){
+    stopPlayback();
+    if (!DATA.loaded || DATA.availableDates.length===0) return;
+    TIME_MODE="day";
+    const v=parseInt(source.value,10) || 0;
+    state.dayIndex=v;
+    el.dateSlider.value=String(v);
+    el.deepDateSlider.value=String(v);
+    updateDateLabel();
+    scheduleRender();
+  }
+  el.dateSlider.addEventListener("input", ()=>onSliderInput(el.dateSlider));
+  el.deepDateSlider.addEventListener("input", ()=>onSliderInput(el.deepDateSlider));
+
+  el.playBtn.addEventListener("click", ()=>{
+    if (ANIM.playing && ANIM.mode==="month") stopPlayback();
+    else startPlayback("month");
+  });
+  el.playDayBtn.addEventListener("click", ()=>{
+    if (el.playDayBtn.disabled) return;
+    if (ANIM.playing && ANIM.mode==="day") stopPlayback();
+    else startPlayback("day");
+  });
+
+  function wireSpeed(btn){ btn.addEventListener("click", ()=>setSpeedMult(btn.dataset.speed)); }
+  wireSpeed(el.speed1Btn); wireSpeed(el.speed2Btn); wireSpeed(el.speed8Btn); wireSpeed(el.speed16Btn);
+  setSpeedMult(1);
+
+  el.toggleBordersBtn.addEventListener("click", ()=>{
+    SHOW_BORDERS = !SHOW_BORDERS;
+    el.toggleBordersBtn.textContent = `Borders: ${SHOW_BORDERS ? "on" : "off"}`;
+    scheduleRender();
+  });
+
+  el.mapSizeSelect.addEventListener("change", ()=>setMapSizePct(el.mapSizeSelect.value));
+
+  el.deepToggleBasemapBtn.addEventListener("click", ()=>{
+    DEEP.showBasemap = !DEEP.showBasemap;
+    el.deepToggleBasemapBtn.textContent = `Basemap: ${DEEP.showBasemap ? "on" : "off"}`;
+    renderDeepTiles();
+    scheduleRender();
+  });
+
+  el.deepToggleStationsBtn.addEventListener("click", ()=>{
+    DEEP.showStations = !DEEP.showStations;
+    el.deepToggleStationsBtn.textContent = `Stations: ${DEEP.showStations ? "on" : "off"}`;
+    hideDeepTooltip();
+    scheduleRender();
+  });
+
+  el.deepToggleLabelsBtn.addEventListener("click", ()=>{
+    DEEP.showLabels = !DEEP.showLabels;
+    el.deepToggleLabelsBtn.textContent = `Labels: ${DEEP.showLabels ? "on" : "off"}`;
+    scheduleRender();
+  });
+
+  el.deepFitBtn.addEventListener("click", ()=>{
+    invalidateDeepCaches();
+    DEEP.mask = buildMaskForBBox(GRID_DEEP, DEEP.bbox, DEEP.boundary);
+    computeDeepLabels();
+    renderDeepTiles();
+    scheduleRender();
+  });
+
+  el.cityGrid.addEventListener("click", (e)=>{
+    const card = e.target.closest(".city-card");
+    if (!card) return;
+    selectDeepCity(card.dataset.city);
+  });
+
+  window.addEventListener("resize", ()=>{
+    renderDeepTiles();
+    scheduleRender();
+  });
+
+  setupDeepHover();
+  syncTemporalControls();
+}
+
+/* ---------------- Render all ---------------- */
+function renderAll(){
+  syncTemporalControls();
+  renderOverviewMap();
+  renderDeepMap();
+
+  const getBBox = (id)=> (CITY_BY_ID.get(id)?.bbox) || null;
+  el.meanLondon.innerHTML = formatUg(computeAveragesForBBox(getBBox("London")));
+  el.meanWestMidlands.innerHTML = formatUg(computeAveragesForBBox(getBBox("WestMidlands")));
+  el.meanManchester.innerHTML = formatUg(computeAveragesForBBox(getBBox("Manchester")));
+  el.meanWestYorkshire.innerHTML = formatUg(computeAveragesForBBox(getBBox("WestYorkshire")));
+  el.meanMerseyside.innerHTML = formatUg(computeAveragesForBBox(getBBox("Merseyside")));
+  el.meanBristolBath.innerHTML = formatUg(computeAveragesForBBox(getBBox("BristolBath")));
+  el.meanSouthCoast.innerHTML = formatUg(computeAveragesForBBox(getBBox("SouthCoast")));
+  el.meanGlasgow.innerHTML = formatUg(computeAveragesForBBox(getBBox("Glasgow")));
+
+  updateDateLabel();
+}
+
+/* ---------------- Boot ---------------- */
+(async function main(){
+  initUI();
+
+  try{
+    state.boundary = await loadBoundaryFromONSdigitalTopo();
+  } catch(e){
+    console.warn("[Boundary] Failed to load UK boundary:", e?.message ?? e);
+    state.boundary = null;
+  }
+  state.mask = buildMaskForBBox(GRID_OVERVIEW, UK_BBOX, state.boundary);
+
+  el.metaLine.textContent = "Loading PM2.5 data…";
+  const ok = await loadPM25Data();
+  el.metaLine.textContent = ok
+    ? `UK boundary loaded | data: ${DATA.stats.stationCount} stations | days=${DATA.stats.dayCount}`
+    : `UK boundary loaded | data failed to load: ${PM25_DATA_URL}`;
+
+  await selectDeepCity("London");
+  scheduleRender();
+})();
+</script>
+
+</body>
+</html>
